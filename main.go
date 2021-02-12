@@ -3,33 +3,47 @@ package main
 import (
 	"fmt"
 	"net"
-	"sync"
+	"sort"
 )
 
+func worker(portas, resultados chan int) {
+	for p := range portas {
+		address := fmt.Sprintf("scanme.nmap.org:%d", p)
+		conn, err := net.Dial("tcp", address)
+		if err != nil {
+			resultados <- 0
+			continue
+		}
+		conn.Close()
+		resultados <- p
+	}
+}
 func main() {
+	portas := make(chan int, 100)
+	resultados := make(chan int)
+	var portasAbertas []int
 
-	var WaitGroup sync.WaitGroup
+	for i := 0; i < cap(portas); i++ {
+		go worker(portas, resultados)
+	}
 
-    for i := 1; i <= 1024; i++ {
+	go func() {
+		for i := 1; i <= 1024; i++ {
+			portas <- i
+		}
+	}()
 
-		WaitGroup.Add(1)
+	for i := 0; i < 1024; i++ {
+		port := <-resultados
+		if port != 0 {
+			portasAbertas = append(portasAbertas, port)
+		}
+	}
 
-		go func(j int) {
-			
-			defer WaitGroup.Done()
-
-			endereco := fmt.Sprintf("scanme.nmap.org:%d", j)
-			conexao, erro := net.Dial("tcp", endereco)
-	
-			if erro != nil {
-				//porta fechada ou filtrada
-				return
-			}
-	
-			conexao.Close()
-			fmt.Printf("porta %d aberta\n", j)
-		} (i)
-		
-		WaitGroup.Wait()
-    }
+	close(portas)
+	close(resultados)
+	sort.Ints(portasAbertas)
+	for _, p := range portasAbertas {
+		fmt.Printf("porta %d aberta\n", p)
+	}
 }
